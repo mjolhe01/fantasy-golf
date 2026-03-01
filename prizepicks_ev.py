@@ -97,7 +97,7 @@ def main() -> None:
     ap.add_argument("--file", "-f", help="CSV file with rows 'name,prob' (prob decimal or percent)")
     ap.add_argument(
         "--mult",
-        help="JSON string or path to JSON file with payout multipliers, e.g. '{"2":1.8, "3":2.6}'",
+        help='JSON string or path to JSON file with payout multipliers, e.g. \'{"2":1.8, "3":2.6}\'',
     )
     ap.add_argument("--top", type=int, default=10, help="How many top combos to show per parlay size")
     args = ap.parse_args()
