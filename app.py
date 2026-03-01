@@ -331,7 +331,7 @@ class FantasyGolfApp(tk.Tk):
                          font=("Consolas", 8)).pack(side="left")
 
                 key = f"{ptype}_{k}"
-                self.mult_entries[key] = e
+                self.mult_entries[key] = e 
 
     def _build_var_prob_entries(self, n):
         """Build variable probability entries for n picks."""
