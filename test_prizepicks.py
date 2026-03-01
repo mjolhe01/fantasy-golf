@@ -130,7 +130,7 @@ try:
         data = r.json()
 
         # Save raw JSON for debugging
-         with open("pp_golf_props.json", "w", encoding="utf-8") as f:
+        with open("pp_golf_props.json", "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         log(f"  Raw JSON saved to pp_golf_raw.json")
 

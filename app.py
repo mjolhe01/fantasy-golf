@@ -24,8 +24,8 @@ from config import (
 )
 from datagolf_client import DataGolfClient
 from prizepicks_ev import (
-    calculate_ev, compare_flex_vs_power, get_payout_table,
-    find_breakeven_prob, ev_sensitivity_table, format_ev_report
+    calculate_ev, get_payout_table,
+    find_breakeven_prob, ev_sensitivity_table,
 )
 from bankroll_manager import BankrollManager
 
@@ -191,316 +191,156 @@ class FantasyGolfApp(tk.Tk):
 
         self._label(left, "EV CALCULATOR", 12, C["text"], True).pack(anchor="w", pady=(0, 10))
 
-        # Pick count
         row = tk.Frame(left, bg=C["card"])
-        row.pack(fill="x", pady=3)
-        self._label(row, "# of Picks:").pack(side="left")
-        self.ev_npicks = ttk.Combobox(row, values=["2","3","4","5","6"], state="readonly",
-                                       width=4, font=("Segoe UI", 10))
-        self.ev_npicks.set("6")
-        self.ev_npicks.pack(side="left", padx=10)
-        self.ev_npicks.bind("<<ComboboxSelected>>", self._on_npicks_change)
-
-        # Preset
-        row2 = tk.Frame(left, bg=C["card"])
-        row2.pack(fill="x", pady=3)
-        self._label(row2, "Payout Preset:").pack(side="left")
-        self.ev_preset = ttk.Combobox(row2, values=["standard", "golf", "custom"],
-                                       state="readonly", width=9, font=("Segoe UI", 10))
-        self.ev_preset.set("golf")
-        self.ev_preset.pack(side="left", padx=10)
-        self.ev_preset.bind("<<ComboboxSelected>>", self._on_preset_change)
-
-        # Multiplier display / custom entry
-        self.mult_frame = tk.LabelFrame(left, text=" Multipliers ", bg=C["card"],
-                                         fg=C["text2"], font=("Segoe UI", 8, "bold"),
-                                         padx=8, pady=5)
-        self.mult_frame.pack(fill="x", pady=5)
-        self.mult_entries = {}  # will hold {k: entry_widget}
-        self._populate_multiplier_fields()
-
-        # Probability mode
-        self._label(left, "Win Probabilities:", 9, C["text"], True).pack(anchor="w", pady=(8, 2))
-
-        self.ev_mode = tk.StringVar(value="uniform")
-        mf = tk.Frame(left, bg=C["card"])
-        mf.pack(fill="x")
-        tk.Radiobutton(mf, text="Same for all", variable=self.ev_mode, value="uniform",
-                        bg=C["card"], fg=C["text"], selectcolor=C["input"],
-                        activebackground=C["card"], activeforeground=C["text"],
-                        command=self._toggle_ev_mode).pack(side="left")
-        tk.Radiobutton(mf, text="Per pick", variable=self.ev_mode, value="variable",
-                        bg=C["card"], fg=C["text"], selectcolor=C["input"],
-                        activebackground=C["card"], activeforeground=C["text"],
-                        command=self._toggle_ev_mode).pack(side="left", padx=10)
-
-        # Uniform input
-        self.uni_frame = tk.Frame(left, bg=C["card"])
-        self.uni_frame.pack(fill="x", pady=3)
-        self._label(self.uni_frame, "Win Prob/Leg (%):").pack(side="left")
-        self.ev_uni_prob = self._entry(self.uni_frame, 8, "56")
+        row.pack(fill="x", pady=4)
+        self._label(row, "Win Prob/Leg (%):").pack(side="left")
+        self.ev_uni_prob = self._entry(row, 8, "56")
         self.ev_uni_prob.pack(side="left", padx=10)
 
-        # Variable inputs
-        self.var_frame = tk.Frame(left, bg=C["card"])
-        self.ev_var_entries = []
-        self._build_var_prob_entries(6)
-
-        # Entry fee
-        ef_row = tk.Frame(left, bg=C["card"])
-        ef_row.pack(fill="x", pady=(8, 3))
-        self._label(ef_row, "Entry Fee ($):").pack(side="left")
-        self.ev_fee = self._entry(ef_row, 8, "5")
+        row2 = tk.Frame(left, bg=C["card"])
+        row2.pack(fill="x", pady=4)
+        self._label(row2, "Entry Fee ($):").pack(side="left")
+        self.ev_fee = self._entry(row2, 8, "5")
         self.ev_fee.pack(side="left", padx=10)
 
-        # Buttons
-        self._btn(left, "⚡ Calculate EV", self._calculate_ev).pack(fill="x", pady=(10, 3))
-        self._btn(left, "📊 Sensitivity Table", self._show_sensitivity, False).pack(fill="x", pady=3)
+        self._btn(left, "⚡ Calculate EV Table", self._calculate_ev).pack(fill="x", pady=(12, 4))
+        self._btn(left, "📊 Sensitivity Table", self._show_sensitivity, False).pack(fill="x", pady=4)
 
-        # Break-even reference
-        self.be_label = tk.Label(left, text="", bg=C["input"], fg=C["text2"],
+        self.be_label = tk.Label(left, text="Break-even rates:\n  (after calculating)",
+                                  bg=C["input"], fg=C["text2"],
                                   font=("Consolas", 8), justify="left", padx=8, pady=6, anchor="w")
-        self.be_label.pack(fill="x", pady=(8, 0))
-        self._update_breakeven_display()
+        self.be_label.pack(fill="x", pady=(12, 0))
 
-        # RIGHT: results
+        legend = tk.Frame(left, bg=C["card"])
+        legend.pack(fill="x", pady=(10, 0))
+        tk.Label(legend, text="■ +EV", bg=C["card"], fg=C["green"],
+                 font=("Segoe UI", 8)).pack(side="left", padx=(0, 10))
+        tk.Label(legend, text="■ -EV", bg=C["card"], fg=C["red"],
+                 font=("Segoe UI", 8)).pack(side="left")
+
+        # RIGHT: table + detail area
         right = tk.Frame(tab, bg=C["bg"])
         right.pack(side="left", fill="both", expand=True, padx=(5, 10), pady=10)
-        self.ev_out = scrolledtext.ScrolledText(right, bg=C["card"], fg=C["text"],
-                                                  font=("Consolas", 10), relief="flat",
-                                                  wrap="word", padx=15, pady=15)
-        self.ev_out.pack(fill="both", expand=True)
+
+        cols = ("picks", "type", "std_ev", "std_roi", "golf_ev", "golf_roi", "std_be", "golf_be")
+        self.ev_tree = ttk.Treeview(right, columns=cols, show="headings", style="Dark.Treeview")
+        for col, heading, width in [
+            ("picks", "Picks", 75), ("type", "Type", 65),
+            ("std_ev", "Std Net EV", 110), ("std_roi", "Std ROI%", 95),
+            ("golf_ev", "Golf Net EV", 110), ("golf_roi", "Golf ROI%", 95),
+            ("std_be", "Std BE%", 90), ("golf_be", "Golf BE%", 90),
+        ]:
+            self.ev_tree.heading(col, text=heading)
+            self.ev_tree.column(col, width=width, anchor="center")
+
+        sb = ttk.Scrollbar(right, orient="vertical", command=self.ev_tree.yview)
+        self.ev_tree.configure(yscrollcommand=sb.set)
+        self.ev_tree.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+
+        self.ev_tree.tag_configure("pos", foreground=C["green"])
+        self.ev_tree.tag_configure("neg", foreground=C["red"])
+        self.ev_tree.tag_configure("mixed", foreground=C["warn"])
+
+        self.ev_out = scrolledtext.ScrolledText(
+            right, bg=C["card"], fg=C["text"], font=("Consolas", 9), relief="flat",
+            wrap="word", padx=12, pady=10, height=7)
+        self.ev_out.pack(fill="x", pady=(5, 0))
         self.ev_out.insert("1.0",
-            "  Run a calculation to see results.\n\n"
-            "  Presets:\n"
-            "    Standard — default PP multipliers\n"
-            "    Golf     — reduced (correlated) multipliers\n"
-            "    Custom   — enter the exact multipliers PP shows you\n\n"
-            "  TIP: Always check the actual multiplier PP displays\n"
-            "  when you build your lineup, then use 'custom' preset\n"
-            "  with those exact numbers for the most accurate EV.")
+            "  Enter a win prob % and click Calculate EV Table.\n"
+            "  Std = Standard (non-correlated) payouts\n"
+            "  Golf = Golf/correlated (reduced) payouts\n"
+            "  BE% = break-even win rate per leg needed")
         self.ev_out.configure(state="disabled")
-
-    def _populate_multiplier_fields(self):
-        """Create/refresh multiplier entry fields based on current preset & pick count."""
-        for w in self.mult_frame.winfo_children():
-            w.destroy()
-        self.mult_entries = {}
-
-        n = int(self.ev_npicks.get())
-        preset = self.ev_preset.get()
-        is_custom = (preset == "custom")
-
-        # Show multipliers for both flex and power
-        for ptype in ["power", "flex"]:
-            payouts = get_payout_table(n, ptype, preset if preset != "custom" else "standard")
-            if not payouts and ptype == "flex" and n == 2:
-                continue  # no flex for 2-pick
-
-            lbl = tk.Label(self.mult_frame,
-                           text=f"{ptype.upper()} {'(editable)' if is_custom else ''}:",
-                           bg=C["card"], fg=C["gold"] if ptype == "power" else C["blue"],
-                           font=("Segoe UI", 8, "bold"))
-            lbl.pack(anchor="w", pady=(3, 0))
-
-            # Determine which outcome levels to show
-            if ptype == "power":
-                levels = [n]  # Only all-correct matters
-            else:
-                # Show all levels that have payouts, plus one below
-                levels = sorted(payouts.keys(), reverse=True) if payouts else list(range(n, max(n-3, 0), -1))
-                if not levels:
-                    levels = list(range(n, max(n-3, 0), -1))
-
-            for k in levels:
-                row = tk.Frame(self.mult_frame, bg=C["card"])
-                row.pack(fill="x", pady=1)
-                tk.Label(row, text=f"  {k}/{n}:", bg=C["card"], fg=C["text2"],
-                         font=("Consolas", 8), width=6, anchor="w").pack(side="left")
-
-                default_val = payouts.get(k, 0)
-                e = tk.Entry(row, bg=C["input"], fg=C["text"],
-                              insertbackground=C["text"], font=("Consolas", 9),
-                              width=7, relief="flat", bd=2)
-                e.insert(0, f"{default_val:.2f}" if default_val else "0")
-                if not is_custom:
-                    e.configure(state="disabled", disabledbackground=C["input"],
-                                disabledforeground=C["text2"])
-                e.pack(side="left", padx=5)
-                tk.Label(row, text="x", bg=C["card"], fg=C["muted"],
-                         font=("Consolas", 8)).pack(side="left")
-
-                key = f"{ptype}_{k}"
-                self.mult_entries[key] = e 
-
-    def _build_var_prob_entries(self, n):
-        """Build variable probability entries for n picks."""
-        for w in self.var_frame.winfo_children():
-            w.destroy()
-        self.ev_var_entries = []
-        for i in range(n):
-            row = tk.Frame(self.var_frame, bg=C["card"])
-            row.pack(fill="x", pady=1)
-            tk.Label(row, text=f"Pick {i+1} (%):", bg=C["card"], fg=C["text2"],
-                     font=("Segoe UI", 8), width=10, anchor="w").pack(side="left")
-            e = self._entry(row, 7, str(54 + i % 4))
-            e.pack(side="left", padx=5)
-            self.ev_var_entries.append(e)
-
-    def _on_npicks_change(self, event=None):
-        n = int(self.ev_npicks.get())
-        self._populate_multiplier_fields()
-        self._build_var_prob_entries(n)
-        self._update_breakeven_display()
-        if self.ev_mode.get() == "variable":
-            self.var_frame.pack(fill="x", pady=3, after=self.uni_frame)
-
-    def _on_preset_change(self, event=None):
-        self._populate_multiplier_fields()
-        self._update_breakeven_display()
-
-    def _toggle_ev_mode(self):
-        if self.ev_mode.get() == "uniform":
-            self.var_frame.pack_forget()
-        else:
-            self.var_frame.pack(fill="x", pady=3, after=self.uni_frame)
-
-    def _update_breakeven_display(self):
-        n = int(self.ev_npicks.get())
-        preset = self.ev_preset.get() if self.ev_preset.get() != "custom" else "standard"
-        lines = [f"Break-even rates ({preset}, {n}-pick):"]
-        for pt in ["power", "flex"]:
-            payouts = get_payout_table(n, pt, preset)
-            if payouts:
-                be = find_breakeven_prob(n, pt, preset)
-                lines.append(f"  {pt.upper():>5s}: {be:.2%}/leg")
-        self.be_label.config(text="\n".join(lines))
-
-    def _get_custom_multipliers(self, play_type):
-        """Read custom multipliers from the entry fields."""
-        mults = {}
-        n = int(self.ev_npicks.get())
-        for k in range(n + 1):
-            key = f"{play_type}_{k}"
-            if key in self.mult_entries:
-                try:
-                    val = float(self.mult_entries[key].get())
-                    if val > 0:
-                        mults[k] = val
-                except ValueError:
-                    pass
-        return mults
 
     def _calculate_ev(self):
         try:
-            n = int(self.ev_npicks.get())
+            wp = float(self.ev_uni_prob.get())
+            if wp > 1:
+                wp /= 100.0
             fee = float(self.ev_fee.get())
         except ValueError:
-            messagebox.showerror("Error", "Enter valid inputs.")
+            messagebox.showerror("Error", "Enter a valid probability and fee.")
             return
 
-        # Get probabilities
-        if self.ev_mode.get() == "uniform":
-            try:
-                wp = float(self.ev_uni_prob.get())
-                if wp > 1: wp /= 100.0
-            except ValueError:
-                messagebox.showerror("Error", "Enter a valid probability.")
-                return
-            probs = [wp] * n
-        else:
-            probs = []
-            for i, e in enumerate(self.ev_var_entries[:n]):
-                try:
-                    p = float(e.get())
-                    if p > 1: p /= 100.0
-                    probs.append(p)
-                except ValueError:
-                    messagebox.showerror("Error", f"Pick {i+1}: invalid probability.")
-                    return
+        self.ev_tree.delete(*self.ev_tree.get_children())
+        be_lines = [f"Break-even rates ({wp:.1%}/leg):"]
 
-        preset = self.ev_preset.get()
-        custom_flex = self._get_custom_multipliers("flex") if preset == "custom" else None
-        custom_power = self._get_custom_multipliers("power") if preset == "custom" else None
+        for n in range(2, 7):
+            for ptype in ["power", "flex"]:
+                std_payouts = get_payout_table(n, ptype, "standard")
+                golf_payouts = get_payout_table(n, ptype, "golf")
+                if not std_payouts and not golf_payouts:
+                    continue
 
-        # Calculate for both play types
-        lines = []
+                probs = [wp] * n
 
-        for ptype, custom in [("power", custom_power), ("flex", custom_flex)]:
-            payouts = get_payout_table(n, ptype, preset, custom)
-            if not payouts:
-                continue
+                if std_payouts:
+                    std = calculate_ev(n, probs, fee, ptype, "standard")
+                    std_ev_str = f"${std['net_ev']:+.2f}"
+                    std_roi_str = f"{std['roi_pct']:+.1f}%"
+                    std_pos = std["is_positive_ev"]
+                    std_be = find_breakeven_prob(n, ptype, "standard")
+                    std_be_str = f"{std_be:.2%}"
+                    be_lines.append(f"  {n}P {ptype[0].upper()} Std: {std_be:.2%}")
+                else:
+                    std_ev_str = std_roi_str = std_be_str = "N/A"
+                    std_pos = None
 
-            result = calculate_ev(n, probs, fee, ptype, preset, custom)
-            lines.append("═" * 58)
-            lines.append(f"  {n}-PICK {ptype.upper()} ({preset.upper()})")
-            lines.append("═" * 58)
-            lines.append(f"  Avg win prob: {result['avg_win_prob']:.2%}   Entry: ${fee:.2f}")
-            mults = {k: v for k, v in result['multipliers_used'].items() if v > 0}
-            lines.append(f"  Multipliers:  {mults}")
-            lines.append("─" * 58)
+                if golf_payouts:
+                    golf = calculate_ev(n, probs, fee, ptype, "golf")
+                    golf_ev_str = f"${golf['net_ev']:+.2f}"
+                    golf_roi_str = f"{golf['roi_pct']:+.1f}%"
+                    golf_pos = golf["is_positive_ev"]
+                    golf_be = find_breakeven_prob(n, ptype, "golf")
+                    golf_be_str = f"{golf_be:.2%}"
+                else:
+                    golf_ev_str = golf_roi_str = golf_be_str = "N/A"
+                    golf_pos = None
 
-            for item in result["breakdown"]:
-                if item["multiplier"] > 0:
-                    lines.append(
-                        f"  {item['label']:>5s}: P={item['probability']:.4%}  "
-                        f"× {item['multiplier']:>6.2f}x  "
-                        f"Payout=${item['payout']:>8.2f}  "
-                        f"EV=${item['ev_contribution']:>7.2f}")
+                if std_pos is True and (golf_pos is True or golf_pos is None):
+                    tag = "pos"
+                elif std_pos is False and (golf_pos is False or golf_pos is None):
+                    tag = "neg"
+                elif std_pos is None:
+                    tag = "pos" if golf_pos else "neg"
+                else:
+                    tag = "mixed"
 
-            lines.append("─" * 58)
-            emoji = "✅ +EV!" if result["is_positive_ev"] else "❌ -EV"
-            lines.append(f"  Net EV: ${result['net_ev']:+.2f}   "
-                         f"ROI: {result['roi_pct']:+.1f}%  {emoji}")
-            be = find_breakeven_prob(n, ptype, preset, custom)
-            lines.append(f"  Break-even: {be:.2%}/leg")
-            lines.append("")
+                self.ev_tree.insert("", "end", tags=(tag,), values=(
+                    f"{n}-Pick", ptype.upper(),
+                    std_ev_str, std_roi_str,
+                    golf_ev_str, golf_roi_str,
+                    std_be_str, golf_be_str,
+                ))
 
-        # Recommendation
-        comp = compare_flex_vs_power(n, probs, fee, preset, custom_flex, custom_power)
-        lines.append("═" * 58)
-        if comp["flex_available"]:
-            lines.append(f"  💡 RECOMMENDATION: {comp['recommendation'].upper()} PLAY")
-            lines.append(f"     EV advantage: ${comp['ev_difference']:+.2f}")
-        else:
-            lines.append(f"  💡 Only POWER available for {n}-pick")
-        lines.append("═" * 58)
-
-        self.ev_out.configure(state="normal")
-        self.ev_out.delete("1.0", "end")
-        self.ev_out.insert("1.0", "\n".join(lines))
-        self.ev_out.configure(state="disabled")
+        self.be_label.config(text="\n".join(be_lines))
 
     def _show_sensitivity(self):
         try:
-            n = int(self.ev_npicks.get())
+            wp = float(self.ev_uni_prob.get())
+            if wp > 1:
+                wp /= 100.0
             fee = float(self.ev_fee.get())
         except ValueError:
             return
 
-        preset = self.ev_preset.get()
-        custom = None
-        if preset == "custom":
-            # Use whichever has more payouts
-            custom = self._get_custom_multipliers("flex") or self._get_custom_multipliers("power")
-
         lines = []
-        for ptype in ["power", "flex"]:
-            payouts = get_payout_table(n, ptype, preset, custom if preset == "custom" else None)
-            if not payouts:
-                continue
-            c = custom if preset == "custom" else None
-            be = find_breakeven_prob(n, ptype, preset, c)
-            lines.append(f"  {n}-Pick {ptype.upper()} ({preset}) — Break-even: {be:.2%}")
-            lines.append(f"  {'Win%':>6s}  {'Net EV':>9s}  {'ROI':>8s}  {'Status':>8s}")
-            lines.append(f"  {'─'*6}  {'─'*9}  {'─'*8}  {'─'*8}")
-
-            table = ev_sensitivity_table(n, fee, ptype, preset, c)
-            for row in table:
-                status = "  +EV ✅" if row["is_positive"] else "  -EV ❌"
-                lines.append(f"  {row['win_prob_pct']:>5d}%  ${row['net_ev']:>+8.2f}  "
-                             f"{row['roi_pct']:>+7.1f}%{status}")
-            lines.append("")
+        for preset in ["standard", "golf"]:
+            for ptype in ["power", "flex"]:
+                payouts = get_payout_table(6, ptype, preset)
+                if not payouts:
+                    continue
+                be = find_breakeven_prob(6, ptype, preset)
+                lines.append(f"  6-Pick {ptype.upper()} ({preset}) — Break-even: {be:.2%}")
+                lines.append(f"  {'Win%':>6s}  {'Net EV':>9s}  {'ROI':>8s}")
+                lines.append(f"  {'─'*6}  {'─'*9}  {'─'*8}")
+                for row in ev_sensitivity_table(6, fee, ptype, preset):
+                    arrow = "◀" if abs(row["win_prob_pct"] / 100 - wp) < 0.006 else " "
+                    status = "+EV ✅" if row["is_positive"] else "-EV ❌"
+                    lines.append(f"  {row['win_prob_pct']:>5d}% {arrow} ${row['net_ev']:>+8.2f}"
+                                 f"  {row['roi_pct']:>+7.1f}%  {status}")
+                lines.append("")
 
         self.ev_out.configure(state="normal")
         self.ev_out.delete("1.0", "end")
